@@ -2,6 +2,7 @@
 
 #include <tuple>
 #include <algorithm>
+#include <cstddef>
 
 namespace control_01 {
     template<typename ... Args>
@@ -29,7 +30,8 @@ namespace control_01 {
     public:
         explicit ZipIterator(Iterators... iterators) : iterators_tuple_(iterators...) {}
 
-        using iterator_category = std::forward_iterator_tag;
+        // using iterator_category = std::forward_iterator_tag; //zip_1
+        using iterator_category = std::bidirectional_iterator_tag; //zip_2
         using value_type = ZipTuple<typename std::iterator_traits<Iterators>::value_type...>;
 //    using value_type = ZipTuple<typename Iterators::value_type...>; <- doesn't work for int* :(
         using reference = value_type&;
@@ -55,10 +57,23 @@ namespace control_01 {
             return *this;
         }
 
+        ZipIterator& operator--() {
+            std::apply([](auto&... iterators) {
+                ((--iterators), ...);
+            }, iterators_tuple_);
+            return *this;
+        }
+
         // Postfix.
         ZipIterator operator++(int) {
             auto copy = ZipIterator(*this);
             ++(*this);
+            return copy;
+        }
+
+        ZipIterator operator--(int) {
+            auto copy = ZipIterator(*this);
+            --(*this);
             return copy;
         }
 
@@ -86,13 +101,59 @@ namespace control_01 {
         explicit zip(Containers&... containers) : containers_tuple_(containers...) {}
 
 //    using iterator = ZipIterator<decltype(std::declval<Containers>().begin())...>;
+
+//       iterators:
+//       |---|
+//       |-------|
+//       |-----|
+//       ^   ^
+//       |   |
+//    begin  |
+//          end
+
         using iterator = ZipIterator<typename Containers::iterator...>;
         using const_iterator = ZipIterator<typename Containers::const_iterator...>;
+
+//       reverse_iterators:
+//           |---|
+//       |-------|
+//         |-----|
+//           ^   ^
+//           |   |
+//        rend   |
+//             rbegin
+//      iterating reverse_iterator != iterating container from common end
+//      we visit different set ov elemnts (compare visited range of elements on illustraion above)
+
+        using reverse_iterator = ZipIterator<typename Containers::reverse_iterator...>;
+        using const_reverse_iterator = ZipIterator<typename Containers::const_reverse_iterator...>;
 
         iterator begin() {
             return std::apply([](auto&... containers) {
                 return ZipIterator(containers.begin()...);
             }, containers_tuple_);
+        }
+
+        const_iterator cbegin() {
+            return std::apply([](const auto&... containers) {
+                return ZipIterator(containers.cbegin()...);
+            }, containers_tuple_);
+        }
+
+
+        reverse_iterator rbegin() {
+          return std::apply(
+              [](auto&... containers) {
+                return ZipIterator(containers.rbegin()...);
+              },
+              containers_tuple_);
+        }
+        const_reverse_iterator crbegin() {
+          return std::apply(
+              [](const auto&... containers) {
+                return ZipIterator(containers.crbegin()...);
+              },
+              containers_tuple_);
         }
 
         [[nodiscard]] size_t size() const {
@@ -107,6 +168,16 @@ namespace control_01 {
             return std::apply([size_](auto &...containers) {
                 return iterator(std::next(containers.begin(), size_)...);
             }, containers_tuple_);
+        
+        }
+        reverse_iterator rend() {
+          size_t size_ = size();
+
+          return std::apply(
+              [size_](auto&... containers) {
+                return reverse_iterator(std::next(containers.rbegin(), size_)...);
+              },
+              containers_tuple_);
         }
 
 //    Old invalid implementation.
